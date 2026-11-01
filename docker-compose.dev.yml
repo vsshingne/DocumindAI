@@ -1,0 +1,8 @@
+# Optional loopback-only dependency ports for running the API on the host.
+services:
+  postgres:
+    ports: ['127.0.0.1:5432:5432']
+  redis:
+    ports: ['127.0.0.1:6379:6379']
+  qdrant:
+    ports: ['127.0.0.1:6333:6333']

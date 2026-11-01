@@ -1,0 +1,125 @@
+name: documind
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  image: documind-backend:local
+  env_file: .env
+  environment: &app-environment
+    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:?Run python scripts/init_env.py}@postgres:5432/${POSTGRES_DB:-documind}
+    REDIS_URL: redis://redis:6379/0
+    QDRANT_URL: http://qdrant:6333
+    STORAGE_ROOT: /data/documents
+  volumes:
+    - documents:/data/documents
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+services:
+  postgres:
+    image: postgres:16.9-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-documind}
+      POSTGRES_USER: ${POSTGRES_USER:-documind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python scripts/init_env.py}
+    volumes: [postgres:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.4-alpine
+    command: [redis-server, --appendonly, 'yes', --maxmemory-policy, noeviction]
+    volumes: [redis:/data]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    volumes: [qdrant:/qdrant/storage]
+    restart: unless-stopped
+
+  # Qdrant's minimal image does not promise curl/wget. Probe from the app image.
+  qdrant-ready:
+    <<: *backend
+    command: [python, -m, app.workers.wait_qdrant]
+    restart: 'no'
+    healthcheck:
+      disable: true
+    depends_on:
+      qdrant:
+        condition: service_started
+
+  migrate:
+    <<: *backend
+    command: [alembic, upgrade, head]
+    restart: 'no'
+    healthcheck:
+      disable: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    <<: *backend
+    ports: ['127.0.0.1:8000:8000']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant-ready:
+        condition: service_completed_successfully
+
+  worker:
+    <<: *backend
+    command: [celery, -A, app.workers.celery_app:celery_app, worker, --loglevel=INFO, '--hostname=worker@%h', --concurrency=2]
+    stop_grace_period: 60s
+    healthcheck:
+      test: [CMD-SHELL, 'celery -A app.workers.celery_app:celery_app inspect ping --destination "worker@$${HOSTNAME}" --timeout 5']
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    command: [--config.file=/etc/prometheus/prometheus.yml, --storage.tsdb.retention.time=15d]
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus:/prometheus
+    ports: ['127.0.0.1:9090:9090']
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.0.1
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Run python scripts/init_env.py}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    volumes:
+      - grafana:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ['127.0.0.1:3000:3000']
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  redis:
+  qdrant:
+  documents:
+  prometheus:
+  grafana:
