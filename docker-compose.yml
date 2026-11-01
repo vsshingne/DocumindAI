@@ -6,8 +6,10 @@ x-backend: &backend
     dockerfile: backend/Dockerfile
   image: documind-backend:local
   env_file: .env
-  environment: &app-environment
-    DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:?Run python scripts/init_env.py}@postgres:5432/${POSTGRES_DB:-documind}
+  environment:
+    # Override older generated .env files that contain a localhost DATABASE_URL.
+    DATABASE_URL: ""
+    POSTGRES_HOST: postgres
     REDIS_URL: redis://redis:6379/0
     QDRANT_URL: http://qdrant:6333
     STORAGE_ROOT: /data/documents

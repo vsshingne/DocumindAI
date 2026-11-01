@@ -30,3 +30,16 @@ explicit handling rather than unsupported confidence claims.
 Do not expose this foundation directly to the internet. Production requires ingress
 access control for operational endpoints, TLS, service credentials, upload resource
 limits, backup/restore tests and review of the deployment threat model.
+
+## Reported generic-password finding (2026-11-02)
+
+GitGuardian flagged a database URL template in commit `634cb65`. The displayed
+expression interpolated the `POSTGRES_PASSWORD` environment variable at runtime;
+the committed line did not contain a password value. The `.env` file is ignored and
+was not tracked in that commit. The URL template has been removed from the current
+Compose and example files. The application now assembles the URL from separate
+settings, and a regression test verifies generated `.env` files work without a
+committed credential URL. The historical commit still exists in Git history, so
+the alert itself may remain open until classified in GitGuardian. Any separate
+finding that shows an actual literal credential requires its own impact review and
+rotation.

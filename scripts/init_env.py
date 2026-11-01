@@ -14,7 +14,6 @@ def main() -> None:
     content = (root / ".env.example").read_text(encoding="utf-8")
     password = secrets.token_hex(24)
     content = content.replace("POSTGRES_PASSWORD=\n", f"POSTGRES_PASSWORD={password}\n")
-    content = content.replace("REPLACE_WITH_POSTGRES_PASSWORD", password)
     content = content.replace("JWT_SECRET=\n", f"JWT_SECRET={secrets.token_hex(32)}\n")
     content = content.replace(
         "GRAFANA_ADMIN_PASSWORD=\n", f"GRAFANA_ADMIN_PASSWORD={secrets.token_hex(24)}\n"

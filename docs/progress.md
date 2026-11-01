@@ -87,3 +87,20 @@ Milestone 2: authenticated document ingestion, storage protocol, format-specific
 parsers, OCR/layout/table extraction, labeled structured extraction, transactional
 job dispatch and bounded idempotent processing. Authentication needed to secure
 uploads will be implemented before exposing document routes.
+
+## 2026-11-02 — generic-password alert follow-up
+
+- Reviewed GitGuardian's displayed finding for commit `634cb65` against the local
+  commit. The reported database URL contains a `${POSTGRES_PASSWORD}` substitution,
+  not a committed password value. The commit tracks `.env.example`, not `.env`.
+- Removed the password-shaped URL from `docker-compose.yml` and `.env.example`.
+  Settings now build the PostgreSQL URL from separate secret and host fields. Compose
+  overrides a legacy `.env` URL with an empty value so existing local setups remain
+  usable inside containers.
+- `scripts/init_env.py` now writes separate secret variables only. A regression
+  test checks generated settings, password redaction, old-file compatibility and
+  refusal to overwrite an existing `.env`.
+- Validation: **32 passed, 1 skipped** (`pytest -q -W error`); Ruff check/format,
+  mypy and `git diff --check` pass. Real dependency validation remains skipped for
+  lack of Docker. The historical alert requires classification in GitGuardian;
+  this repository change does not change Git history.

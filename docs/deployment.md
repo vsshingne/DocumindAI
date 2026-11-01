@@ -33,6 +33,13 @@ python -m alembic -c backend/alembic.ini upgrade head
 python -m uvicorn app.main:create_app --factory --app-dir backend --no-access-log
 ```
 
+The application assembles its PostgreSQL URL from the separate `POSTGRES_*`
+settings. Compose overrides `POSTGRES_HOST` to the internal service name. An
+explicit `DATABASE_URL` can still override these settings for an isolated test
+database or another deployment. Compose sets `DATABASE_URL` to an empty override so
+older generated `.env` files that specify a localhost URL remain usable with the
+container stack.
+
 For the optional integration test, use an isolated database and export the
 DATABASE_URL, REDIS_URL and QDRANT_URL variables, set `DOCUMIND_INTEGRATION=1`,
 then run `python -m pytest -m integration -v` from `backend`. The test applies

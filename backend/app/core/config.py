@@ -6,7 +6,7 @@ from typing import Literal, Self
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from sqlalchemy.engine import make_url
+from sqlalchemy.engine import URL, make_url
 
 
 class Settings(BaseSettings):
@@ -16,7 +16,12 @@ class Settings(BaseSettings):
 
     app_env: Literal["development", "test", "production"] = "development"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
-    database_url: SecretStr = SecretStr("sqlite+pysqlite:///:memory:")
+    database_url: SecretStr = SecretStr("")
+    postgres_host: str = "localhost"
+    postgres_port: int = Field(default=5432, ge=1, le=65535)
+    postgres_db: str = "documind"
+    postgres_user: str = "documind"
+    postgres_password: SecretStr | None = None
     redis_url: SecretStr = SecretStr("redis://localhost:6379/0")
     qdrant_url: str = "http://localhost:6333"
     qdrant_api_key: SecretStr | None = None
@@ -41,6 +46,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_deployment(self) -> Self:
+        if not self.database_url.get_secret_value():
+            if self.app_env == "test":
+                self.database_url = SecretStr("sqlite+pysqlite:///:memory:")
+            else:
+                if not self.postgres_password or not self.postgres_password.get_secret_value():
+                    raise ValueError("POSTGRES_PASSWORD is required unless DATABASE_URL is set")
+                url = URL.create(
+                    "postgresql+psycopg",
+                    username=self.postgres_user,
+                    password=self.postgres_password.get_secret_value(),
+                    host=self.postgres_host,
+                    port=self.postgres_port,
+                    database=self.postgres_db,
+                )
+                self.database_url = SecretStr(url.render_as_string(hide_password=False))
         url = make_url(self.database_url.get_secret_value())
         if url.get_backend_name() not in {"postgresql", "sqlite"}:
             raise ValueError("Only PostgreSQL and test SQLite databases are supported")
